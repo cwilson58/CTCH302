@@ -9,13 +9,14 @@
 
 //to go from tempo to HZ, divide by 60
 // temp is in BPM
-unsigned int tempo = 60; //base tempo is 60BPM, matches a clock
+unsigned int tempo = 120; //base tempo is 60BPM, matches a clock
 unsigned int delayValue = MICROSECONDS_IN_A_MINUTE / tempo;
 unsigned volatile short beat = 1;
+volatile bool update = true;
 Adafruit_CPlay_NeoPixel strip = Adafruit_CPlay_NeoPixel(1, PIN_A2, NEO_GRB + NEO_KHZ800);
 
-uint16_t convertTempToTimerValue(){
-  return (48 * 10^6 / (tempo/60) * 1024) - 1;
+uint16_t convertTempoToTimerValue(){
+  return (48000000 / ((tempo/60)*1024)) - 1;
 }
 
 // Code taken from this forum post: https://forum.arduino.cc/t/timer-interrupt-on-arduino-zero-board/409166/3
@@ -39,7 +40,7 @@ void timerSetup(){
                      GCLK_CLKCTRL_ID_TC4_TC5;     // Feed the GCLK4 to TC4 and TC5
   while (GCLK->STATUS.bit.SYNCBUSY);              // Wait for synchronization
  
-  REG_TC4_COUNT16_CC0 =  convertTempToTimerValue();                   // Set the TC4 CC0 register as the TOP value in match frequency mode
+  REG_TC4_COUNT16_CC0 =  convertTempoToTimerValue();                   // Set the TC4 CC0 register as the TOP value in match frequency mode
   while (TC4->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for synchronization
 
   NVIC_SetPriority(TC4_IRQn, 3); 
@@ -56,13 +57,17 @@ void timerSetup(){
 }
 
 void TC4_Handler(){     
-  Serial.println("ISR"); //BAD
   // Check for overflow (OVF) interrupt
   if (TC4->COUNT16.INTFLAG.bit.OVF && TC4->COUNT16.INTENSET.bit.OVF)             
   {
-    // Put your timer overflow (OVF) code here:     
-    // ...
-
+        // Put your timer overflow (OVF) code here:     
+        // ...
+    strip.clear();
+    beat++;
+    if(beat > 4){
+      beat = 1;
+    }
+    update = true;
     REG_TC4_INTFLAG = TC_INTFLAG_OVF;         // Clear the OVF interrupt flag
   }
 }
@@ -78,32 +83,27 @@ void setup() {
 }
 
 void loop() {
-  strip.clear();
-  Serial.println(beat);
-  if(digitalRead(PIN_A5) == LOW){
-    Serial.println("low");
-  }
-  else {
-    Serial.println("high");
-  }
-  delayMicroseconds(delayValue);
-  beat++;
-  if(beat % 2 == 0){
+  if(update){
+    Serial.println(beat);
     CircuitPlayground.redLED(1);
     digitalWrite(PIN_A1, HIGH);
-    for(int i=0; i<1; i++) {
-      strip.setPixelColor(i, 0, 50, 0);
-    }
-  }
-  else{
+    delay(200);
     CircuitPlayground.redLED(0);
     digitalWrite(PIN_A1, LOW);
-    for(int i=0; i<1; i++) {
-      strip.setPixelColor(i, 50, 0, 0);
-    }
-  }
-  strip.show();
-  if(beat > 4){
-    beat = 1;
+    // if(beat % 2 == 0){
+    //   CircuitPlayground.redLED(1);
+    //   digitalWrite(PIN_A1, HIGH);
+    //   for(int i=0; i<1; i++) {
+    //     strip.setPixelColor(i, 0, 50, 0);
+    //   }
+    // }
+    // else{
+    //   CircuitPlayground.redLED(0);
+    //   digitalWrite(PIN_A1, LOW);
+    //   for(int i=0; i<1; i++) {
+    //     strip.setPixelColor(i, 50, 0, 0);
+    //   }
+    // }
+    update = false;
   }
 }
