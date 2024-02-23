@@ -3,17 +3,23 @@
 #define SECONDS_IN_A_MINUTE 60
 #define MICROSECONDS_IN_A_SECOND  1000
 #define MICROSECONDS_IN_A_MINUTE  60000000
+#define NEOPIXEL_PIN        PIN_A2
 #define NEXT_TEMPO_BUTTON   PIN_A3
-#define PREV_TEMPO_BUTTON   PIN_A4
+#define PREV_TEMPO_BUTTON   PIN_A6
 #define PLAY_TEMPO_BUTTON   PIN_A5
+#define NUMBER_OF_TEMPOS    6
 
 //to go from tempo to HZ, divide by 60
+const int tempoList[] = {40,60,80,120,144,170};
+int tempoIndex = 1; //base tempo is 60BPM, matches a clock
 // temp is in BPM
-unsigned int tempo = 120; //base tempo is 60BPM, matches a clock
+unsigned int tempo = tempoList[tempoIndex]; 
 unsigned int delayValue = MICROSECONDS_IN_A_MINUTE / tempo;
 unsigned volatile short beat = 1;
 volatile bool update = true;
-Adafruit_CPlay_NeoPixel strip = Adafruit_CPlay_NeoPixel(1, PIN_A2, NEO_GRB + NEO_KHZ800);
+volatile bool playing = true;
+volatile short updateTempo = 0;
+Adafruit_CPlay_NeoPixel strip = Adafruit_CPlay_NeoPixel(1, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 uint16_t convertTempoToTimerValue(){
   return (48000000 / ((tempo/60)*1024)) - 1;
@@ -72,38 +78,69 @@ void TC4_Handler(){
   }
 }
 
+void playHandler(){
+  playing = !playing;
+}
+
+void increaseTempoHandler(){
+  updateTempo = 1;
+  delay(100);
+}
+
+void decreaseTempoHandler(){
+  updateTempo = -1;
+  delay(100);
+}
+
+void changeTempo(){
+    tempoIndex += updateTempo;
+    updateTempo = 0;
+    if(tempoIndex < 0) {
+      tempoIndex = 0;
+    }
+    else if(tempoIndex >= NUMBER_OF_TEMPOS){
+      tempoIndex = NUMBER_OF_TEMPOS - 1;
+    }
+    tempo = tempoList[tempoIndex];
+    Serial.println(tempo);
+    // reconfigure timer
+    noInterrupts();
+    REG_TC4_COUNT16_CC0 =  convertTempoToTimerValue();                   // Set the TC4 CC0 register as the TOP value in match frequency mode
+    while (TC4->COUNT16.STATUS.bit.SYNCBUSY);       // Wait for synchronization
+    interrupts();
+}
 void setup() {
   CircuitPlayground.begin();
   strip.begin();
   pinMode(PIN_A1,OUTPUT);
   pinMode(PLAY_TEMPO_BUTTON,INPUT_PULLDOWN);
+  pinMode(NEXT_TEMPO_BUTTON,INPUT_PULLDOWN);
+  pinMode(PREV_TEMPO_BUTTON,INPUT_PULLDOWN);
   CircuitPlayground.clearPixels();
   strip.clear();
   timerSetup();
+  attachInterrupt(digitalPinToInterrupt(PLAY_TEMPO_BUTTON), playHandler, RISING);
+  attachInterrupt(digitalPinToInterrupt(NEXT_TEMPO_BUTTON), increaseTempoHandler, RISING);
+  attachInterrupt(digitalPinToInterrupt(PREV_TEMPO_BUTTON), decreaseTempoHandler, RISING);
 }
 
 void loop() {
-  if(update){
+  if(updateTempo != 0){
+    changeTempo();
+  }
+  if(playing && update){
     Serial.println(beat);
-    CircuitPlayground.redLED(1);
     digitalWrite(PIN_A1, HIGH);
+    if(beat%2 != 0){
+      CircuitPlayground.redLED(1);
+      strip.setPixelColor(0, 0, 50, 0);
+      strip.show();
+    }
     delay(200);
     CircuitPlayground.redLED(0);
     digitalWrite(PIN_A1, LOW);
-    // if(beat % 2 == 0){
-    //   CircuitPlayground.redLED(1);
-    //   digitalWrite(PIN_A1, HIGH);
-    //   for(int i=0; i<1; i++) {
-    //     strip.setPixelColor(i, 0, 50, 0);
-    //   }
-    // }
-    // else{
-    //   CircuitPlayground.redLED(0);
-    //   digitalWrite(PIN_A1, LOW);
-    //   for(int i=0; i<1; i++) {
-    //     strip.setPixelColor(i, 50, 0, 0);
-    //   }
-    // }
+    strip.setPixelColor(0, 50, 0, 0);
+    strip.show();
     update = false;
   }
 }
