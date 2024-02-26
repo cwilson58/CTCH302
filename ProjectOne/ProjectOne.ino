@@ -10,7 +10,7 @@ volatile bool update = true;
 volatile bool playing = true;
 volatile short updateTempo = 0;
 Adafruit_CPlay_NeoPixel strip = Adafruit_CPlay_NeoPixel(1, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
+int idleRGB[] = {50,0,0};
 // ISRs
 void TC4_Handler(){     
   if (TC4->COUNT16.INTFLAG.bit.OVF && TC4->COUNT16.INTENSET.bit.OVF)             
@@ -25,17 +25,30 @@ void TC4_Handler(){
 }
 
 void playHandler(){
-  playing = !playing;
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  if(interrupt_time - last_interrupt_time > 200){
+    playing = !playing;
+  }
+  last_interrupt_time = interrupt_time;
 }
 
 void increaseTempoHandler(){
-  updateTempo = 1;
-  delay(100);
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  if(interrupt_time - last_interrupt_time > 200){
+    updateTempo = 1;
+  }
+  last_interrupt_time = interrupt_time;
 }
 
 void decreaseTempoHandler(){
-  updateTempo = -1;
-  delay(100);
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  if(interrupt_time - last_interrupt_time > 200){
+    updateTempo = -1;
+  }
+  last_interrupt_time = interrupt_time;
 }
 
 // helper functions
@@ -49,6 +62,31 @@ void changeTempo(){
       tempoIndex = NUMBER_OF_TEMPOS - 1;
     }
     tempo = tempoList[tempoIndex];
+    if(tempo == 40){
+      idleRGB[0] = 50;
+      idleRGB[1] = 0;
+      idleRGB[2] = 0;
+    }
+    else if(tempo == 60){
+      idleRGB[0] = 0;
+      idleRGB[1] = 0;
+      idleRGB[2] = 50;
+    }
+    else if(tempo == 120){
+      idleRGB[0] = 255;
+      idleRGB[1] = 165;
+      idleRGB[2] = 0;
+    }
+    else if(tempo == 144){
+      idleRGB[0] = 155;
+      idleRGB[1] = 155;
+      idleRGB[2] = 53;
+    }
+    else{
+      idleRGB[0] = 160;
+      idleRGB[1] = 32;
+      idleRGB[2] = 240;
+    }
     Serial.println(tempo);
     // reconfigure timer
     noInterrupts();
@@ -61,7 +99,6 @@ void changeTempo(){
 * Show the best 
 */
 void updateState(){
-  Serial.println(beat);
   digitalWrite(PIN_A1, HIGH);
   if(beat%2 != 0){
     CircuitPlayground.redLED(1);
@@ -71,7 +108,7 @@ void updateState(){
   delay(200);
   CircuitPlayground.redLED(0);
   digitalWrite(PIN_A1, LOW);
-  strip.setPixelColor(0, 50, 0, 0);
+  strip.setPixelColor(0, idleRGB[0], idleRGB[1], idleRGB[2]);
   strip.show();
 }
 
@@ -90,5 +127,11 @@ void loop() {
   if(playing && update){
     updateState();
     update = false;
+  }
+  else if(!playing){ //when not playing, solid green LED,
+    strip.clear();
+    CircuitPlayground.redLED(1);
+    strip.setPixelColor(0, 0, 50, 0);
+    strip.show();
   }
 }
